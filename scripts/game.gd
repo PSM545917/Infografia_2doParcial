@@ -22,6 +22,8 @@ var indice_velocidad := 0
 var wait_time_base := 0.12
 var duracion_paso_base := 0.10
 
+var selector_laberintos: OptionButton = null
+
 signal pasos_cambiados(pasos: int)
 signal visitadas_cambiadas(cantidad: int)
 signal tiempo_cambiado(segundos: float)
@@ -47,6 +49,7 @@ func _ready() -> void:
 	duracion_paso_base = raton.duracion_paso
 	raton.paso_terminado.connect(_on_raton_paso_terminado)
 	raton.choque.connect(_on_raton_choque)
+	_inicializar_selector_laberintos()
 	_iniciar_corrida()
 	_emitir_telemetria()
 
@@ -84,6 +87,11 @@ func _iniciar_corrida() -> void:
 	else:
 		cerebro = CerebroWallFollower.new()
 		vista_mapa_raton.configurar(null, ORIGEN, tam_celda)
+		
+	# Cargar y actualizar récord
+	var record = _cargar_record(archivo_laberinto.get_file())
+	$ui/hud.update_record(record)
+	
 	paso_timer.start()
 
 
@@ -150,6 +158,9 @@ func _terminar_corrida(exito: bool) -> void:
 	_mostrar_resultado_final(exito)
 	if exito:
 		sonido_meta.play()
+		if usar_cerebro_estudiante:
+			var speed_run_steps = raton.pasos - cerebro.pasos_antes_speed_run
+			_guardar_record_si_mejor(archivo_laberinto.get_file(), speed_run_steps)
 	corrida_terminada.emit(exito, raton.pasos, tiempo, visitadas.size())
 	print("Meta alcanzada en ", raton.pasos, " pasos")
 
@@ -205,3 +216,55 @@ func _on_boton_velocidad_pressed() -> void:
 func _on_boton_reiniciar_pressed() -> void:
 	_iniciar_corrida()
 	_emitir_telemetria()
+
+
+func _inicializar_selector_laberintos() -> void:
+	var dir = DirAccess.open("res://mazes/")
+	var archivos_maz: Array[String] = []
+	if dir:
+		dir.list_dir_begin()
+		var file_name = dir.get_next()
+		while file_name != "":
+			if not dir.current_is_dir() and file_name.ends_with(".maz"):
+				archivos_maz.append(file_name)
+			file_name = dir.get_next()
+		dir.list_dir_end()
+	
+	archivos_maz.sort()
+	
+	selector_laberintos = OptionButton.new()
+	var columna_hud = $ui/hud/margen/columna
+	columna_hud.add_child(selector_laberintos)
+	columna_hud.move_child(selector_laberintos, columna_hud.get_child_count() - 2) # arriba de los botones
+	
+	for i in archivos_maz.size():
+		var archivo = archivos_maz[i]
+		selector_laberintos.add_item(archivo, i)
+		if "res://mazes/" + archivo == archivo_laberinto:
+			selector_laberintos.selected = i
+			
+	selector_laberintos.item_selected.connect(_on_laberinto_seleccionado)
+
+
+func _on_laberinto_seleccionado(idx: int) -> void:
+	var nombre_archivo = selector_laberintos.get_item_text(idx)
+	archivo_laberinto = "res://mazes/" + nombre_archivo
+	_iniciar_corrida()
+
+
+func _cargar_record(lab_nombre: String) -> int:
+	var config = ConfigFile.new()
+	var err = config.load("user://records.cfg")
+	if err == OK:
+		return config.get_value("records", lab_nombre, -1)
+	return -1
+
+
+func _guardar_record_si_mejor(lab_nombre: String, pasos: int) -> void:
+	var record_actual = _cargar_record(lab_nombre)
+	if record_actual == -1 or pasos < record_actual:
+		var config = ConfigFile.new()
+		config.load("user://records.cfg")
+		config.set_value("records", lab_nombre, pasos)
+		config.save("user://records.cfg")
+		$ui/hud.update_record(pasos)
