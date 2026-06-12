@@ -6,6 +6,8 @@ extends Node2D
 const ORIGEN := Vector2(28, 44)
 const FASE_EXPLORANDO := "EXPLORANDO"
 const FASE_META := "META"
+const FASE_VOLVIENDO := "VOLVIENDO"
+const FASE_SPEED_RUN := "SPEED_RUN"
 const FASE_FIN := "FIN"
 
 var tam_celda := 38.0
@@ -95,11 +97,21 @@ func _ejecutar_paso() -> void:
 	if fase == FASE_FIN:
 		return
 	cerebro.paso(raton)
+	if usar_cerebro_estudiante:
+		fase = cerebro.fase
 	visitadas[raton.celda] = true
 	_emitir_telemetria()
 	_actualizar_vista_raton()
-	if laberinto.es_meta(raton.celda):
-		_meta_alcanzada()
+	
+	if usar_cerebro_estudiante:
+		if fase == FASE_META:
+			if not sonido_meta.playing:
+				sonido_meta.play()
+		elif fase == FASE_FIN:
+			_terminar_corrida(true)
+	else:
+		if laberinto.es_meta(raton.celda):
+			_meta_alcanzada()
 
 
 func _emitir_telemetria() -> void:
@@ -144,11 +156,21 @@ func _terminar_corrida(exito: bool) -> void:
 
 func _mostrar_resultado_final(exito: bool) -> void:
 	resultado_label.text = "META ALCANZADA" if exito else "CORRIDA TERMINADA"
-	detalle_resultado_label.text = "pasos: %d\ntiempo: %.1f s\nvisitadas: %d" % [
-		raton.pasos,
-		tiempo,
-		visitadas.size(),
-	]
+	if usar_cerebro_estudiante and fase == FASE_FIN:
+		var exploracion_steps = cerebro.pasos_fin_exploracion
+		var speed_run_steps = raton.pasos - cerebro.pasos_antes_speed_run
+		detalle_resultado_label.text = "Exploración: %d pasos\nSpeed Run: %d pasos\nTiempo Total: %.1f s\nTotal visitadas: %d" % [
+			exploracion_steps,
+			speed_run_steps,
+			tiempo,
+			visitadas.size(),
+		]
+	else:
+		detalle_resultado_label.text = "pasos: %d\ntiempo: %.1f s\nvisitadas: %d" % [
+			raton.pasos,
+			tiempo,
+			visitadas.size(),
+		]
 	panel_final.show()
 
 
