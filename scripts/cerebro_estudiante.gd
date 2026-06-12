@@ -1,50 +1,19 @@
 class_name CerebroEstudiante
 extends RefCounted
 
-# === TU CEREBRO (M1, M2, M3) ===
-#
-# Contrato: game.gd llama paso(raton) en cada tick y tu cerebro ejecuta UNA
-# acción (girar_izquierda / girar_derecha / avanzar). Solo puedes usar la API
-# pública del ratón — sensar paredes de la celda actual y moverte. Nada de
-# leer el laberinto real.
-#
-# Para activarlo: en el Inspector de la escena game.tscn, marca la casilla
-# "Usar Cerebro Estudiante" del nodo raíz (o cambia el valor por defecto en
-# game.gd).
-#
-# Plan sugerido (es el algoritmo clásico de la competencia micromouse):
-#
-#   FASE 1 — EXPLORAR (M1):
-#     - Mantén tu propio mapa: un Laberinto.vacio(ancho, alto) donde anotas
-#       (con poner_pared) cada pared que sensas, y un diccionario de celdas
-#       visitadas. El ratón conoce su celda y rumbo (raton.celda, raton.rumbo).
-#     - Flood-fill: calcula la distancia de CADA celda a la meta inundando
-#       desde la meta sobre tu mapa (las celdas no exploradas se asumen sin
-#       paredes — por eso se vuelve a calcular cada vez que descubres una).
-#     - Muévete siempre hacia la celda vecina accesible con menor distancia.
-#     - Cuando llegues a la meta, puedes seguir explorando o volver al inicio.
-#
-#   FASE 2 — SPEED RUN (M3):
-#     - De vuelta en el inicio, calcula la mejor ruta sobre el mapa que
-#       DESCUBRISTE (otro flood-fill, esta vez solo por celdas conocidas) y
-#       ejecútala sin sensar. Compárala en pantalla con la ruta de exploración.
-#
-#   El mapa que mantienes aquí es exactamente lo que la vista "mapa del ratón"
-#   (M2) debe dibujar: expón tu Laberinto descubierto y tus visitadas para que
-#   game.gd se los pase a la vista derecha.
+const FASE_EXPLORANDO := "EXPLORANDO"
+const INF := 1000000
 
-# TODO (PARCIAL · M1): declara aquí tu estado: el mapa descubierto
-# (Laberinto.vacio), las celdas visitadas, las distancias del flood-fill y la
-# fase actual (EXPLORANDO / VOLVIENDO / SPEED_RUN).
-
-# TODO (PARCIAL · M1): necesitarás saber dónde están la meta y el inicio. El
-# tamaño del laberinto, las metas y la celda de inicio son datos "del
-# concurso" (se conocen de antemano): game.gd te los entrega en preparar().
-# Las PAREDES no.
 var ancho: int = 0
 var alto: int = 0
 var metas: Array[Vector2i] = []
 var inicio: Vector2i = Vector2i.ZERO
+var mapa_descubierto: Laberinto = null
+var visitadas := {}
+var conteo_visitas := {}
+var distancias := []
+var ruta_exploracion: Array[Vector2i] = []
+var fase := FASE_EXPLORANDO
 
 
 func preparar(ancho_: int, alto_: int, metas_: Array[Vector2i],
@@ -53,22 +22,126 @@ func preparar(ancho_: int, alto_: int, metas_: Array[Vector2i],
 	alto = alto_
 	metas = metas_
 	inicio = inicio_
-	# TODO (PARCIAL · M1): inicializa tu mapa descubierto y tu estado aquí.
+	mapa_descubierto = Laberinto.vacio(ancho, alto)
+	mapa_descubierto.inicio = inicio
+	mapa_descubierto.metas = metas.duplicate()
+	visitadas = {}
+	conteo_visitas = {}
+	distancias = []
+	ruta_exploracion = []
+	fase = FASE_EXPLORANDO
 
 
 func paso(raton: Raton) -> void:
-	# TODO (PARCIAL · M1): 1) sensa y anota las paredes de la celda actual en
-	# tu mapa; 2) recalcula el flood-fill; 3) ejecuta UNA acción hacia la
-	# vecina con menor distancia.
-	# Mientras no implementes nada, el ratón se queda quieto.
-	pass
+	_registrar_visita(raton.celda)
+	_anotar_paredes(raton)
+	distancias = _flood_fill(metas)
+	var rumbo_objetivo = _mejor_vecina(raton.celda, distancias)
+	_mover_hacia(raton, rumbo_objetivo)
 
 
-# TODO (PARCIAL · M1): funciones sugeridas.
-# func _anotar_paredes(raton: Raton) -> void:
-# func _flood_fill(hasta: Array[Vector2i], solo_conocidas: bool) -> Array:
-# func _mejor_vecina(desde: Vector2i, distancias: Array) -> int:  # rumbo
+func _registrar_visita(celda: Vector2i) -> void:
+	visitadas[celda] = true
+	conteo_visitas[celda] = conteo_visitas.get(celda, 0) + 1
+	if ruta_exploracion.is_empty() or ruta_exploracion[ruta_exploracion.size() - 1] != celda:
+		ruta_exploracion.append(celda)
 
-# TODO (PARCIAL · M3): cuando termines de explorar y estés en el inicio,
-# calcula la ruta del speed run y guárdala para que game.gd la dibuje.
-# func ruta_speed_run() -> Array[Vector2i]:
+
+func _anotar_paredes(raton: Raton) -> void:
+	var celda = raton.celda
+	var frente = raton.rumbo
+	var izquierda = (raton.rumbo + 3) % 4
+	var derecha = (raton.rumbo + 1) % 4
+	if raton.pared_frente():
+		mapa_descubierto.poner_pared(celda, frente)
+	if raton.pared_izquierda():
+		mapa_descubierto.poner_pared(celda, izquierda)
+	if raton.pared_derecha():
+		mapa_descubierto.poner_pared(celda, derecha)
+
+
+func _flood_fill(destinos: Array[Vector2i]) -> Array:
+	var resultado := []
+	for fila in alto:
+		var fila_distancias := []
+		for col in ancho:
+			fila_distancias.append(INF)
+		resultado.append(fila_distancias)
+
+	var cola: Array[Vector2i] = []
+	for destino in destinos:
+		if mapa_descubierto.en_rango(destino):
+			resultado[destino.y][destino.x] = 0
+			cola.append(destino)
+
+	var indice := 0
+	while indice < cola.size():
+		var actual = cola[indice]
+		indice += 1
+		var distancia_actual: int = resultado[actual.y][actual.x]
+		for dir in 4:
+			if mapa_descubierto.tiene_pared(actual, dir):
+				continue
+			var vecina = actual + Laberinto.DELTAS[dir]
+			if not mapa_descubierto.en_rango(vecina):
+				continue
+			if resultado[vecina.y][vecina.x] > distancia_actual + 1:
+				resultado[vecina.y][vecina.x] = distancia_actual + 1
+				cola.append(vecina)
+	return resultado
+
+
+func _mejor_vecina(desde: Vector2i, distancias_: Array) -> int:
+	var mejor_dir := -1
+	var mejor_distancia := INF
+	var mejor_visitada := true
+	var mejor_visitas := INF
+	for dir in 4:
+		if mapa_descubierto.tiene_pared(desde, dir):
+			continue
+		var vecina = desde + Laberinto.DELTAS[dir]
+		if not mapa_descubierto.en_rango(vecina):
+			continue
+		var distancia: int = distancias_[vecina.y][vecina.x]
+		var ya_visitada := visitadas.has(vecina)
+		var visitas: int = conteo_visitas.get(vecina, 0)
+		if distancia < mejor_distancia:
+			mejor_dir = dir
+			mejor_distancia = distancia
+			mejor_visitada = ya_visitada
+			mejor_visitas = visitas
+		elif distancia == mejor_distancia:
+			if mejor_visitada and not ya_visitada:
+				mejor_dir = dir
+				mejor_visitada = ya_visitada
+				mejor_visitas = visitas
+			elif ya_visitada == mejor_visitada and visitas < mejor_visitas:
+				mejor_dir = dir
+				mejor_visitas = visitas
+	if mejor_dir == -1:
+		return Laberinto.NORTE
+	return mejor_dir
+
+
+func _mover_hacia(raton: Raton, rumbo_objetivo: int) -> void:
+	var giro = (rumbo_objetivo - raton.rumbo + 4) % 4
+	if giro == 0:
+		raton.avanzar()
+	elif giro == 1:
+		raton.girar_derecha()
+	elif giro == 3:
+		raton.girar_izquierda()
+	else:
+		raton.girar_derecha()
+
+
+func mapa_del_raton() -> Laberinto:
+	return mapa_descubierto
+
+
+func celdas_visitadas() -> Dictionary:
+	return visitadas
+
+
+func ruta_explorada() -> Array[Vector2i]:
+	return ruta_exploracion

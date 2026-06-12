@@ -1,7 +1,7 @@
 extends Node2D
 
 @export_file("*.maz") var archivo_laberinto: String = "res://mazes/01_entrenamiento.maz"
-@export var usar_cerebro_estudiante: bool = false
+@export var usar_cerebro_estudiante: bool = true
 
 const ORIGEN := Vector2(28, 44)
 const FASE_EXPLORANDO := "EXPLORANDO"
