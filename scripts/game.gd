@@ -4,11 +4,14 @@ extends Node2D
 @export var usar_cerebro_estudiante: bool = false
 
 const ORIGEN := Vector2(28, 44)
+const FASE_EXPLORANDO := "EXPLORANDO"
+const FASE_META := "META"
+const FASE_FIN := "FIN"
 
 var tam_celda := 38.0
 var laberinto: Laberinto
 var cerebro = null
-var fase := "EXPLORANDO"
+var fase := FASE_EXPLORANDO
 var tiempo := 0.0
 var visitadas := {}
 var pausado := false
@@ -21,6 +24,7 @@ signal pasos_cambiados(pasos: int)
 signal visitadas_cambiadas(cantidad: int)
 signal tiempo_cambiado(segundos: float)
 signal fase_cambiada(nombre: String)
+signal corrida_terminada(exito: bool, pasos: int, tiempo_final: float, visitadas_final: int)
 
 @onready var vista_dios: VistaLaberinto = $vista_dios
 @onready var vista_mapa_raton: VistaLaberinto = $vista_mapa_raton
@@ -28,11 +32,19 @@ signal fase_cambiada(nombre: String)
 @onready var paso_timer: Timer = $paso_timer
 @onready var boton_pausa: Button = $ui/hud/margen/columna/botones/boton_pausa
 @onready var boton_velocidad: Button = $ui/hud/margen/columna/botones/boton_velocidad
+@onready var panel_final: PanelContainer = $ui/panel_final
+@onready var resultado_label: Label = $ui/panel_final/margen/columna/resultado_label
+@onready var detalle_resultado_label: Label = $ui/panel_final/margen/columna/detalle_resultado_label
+@onready var sonido_paso: AudioStreamPlayer = $sonido_paso
+@onready var sonido_choque: AudioStreamPlayer = $sonido_choque
+@onready var sonido_meta: AudioStreamPlayer = $sonido_meta
 
 
 func _ready() -> void:
 	wait_time_base = paso_timer.wait_time
 	duracion_paso_base = raton.duracion_paso
+	raton.paso_terminado.connect(_on_raton_paso_terminado)
+	raton.choque.connect(_on_raton_choque)
 	_iniciar_corrida()
 	_emitir_telemetria()
 
@@ -44,11 +56,12 @@ func _process(delta: float) -> void:
 
 
 func _iniciar_corrida() -> void:
+	panel_final.hide()
 	laberinto = Laberinto.desde_archivo(archivo_laberinto)
 	tam_celda = minf(56.0, 608.0 / maxf(laberinto.ancho, laberinto.alto))
 	vista_dios.configurar(laberinto, ORIGEN, tam_celda)
 	raton.configurar(laberinto, ORIGEN, tam_celda)
-	fase = "EXPLORANDO"
+	fase = FASE_EXPLORANDO
 	tiempo = 0.0
 	visitadas = {}
 	visitadas[raton.celda] = true
@@ -73,6 +86,8 @@ func _on_paso_timer_timeout() -> void:
 func _ejecutar_paso() -> void:
 	if raton.ocupado():
 		return
+	if fase == FASE_FIN:
+		return
 	cerebro.paso(raton)
 	visitadas[raton.celda] = true
 	_emitir_telemetria()
@@ -88,10 +103,38 @@ func _emitir_telemetria() -> void:
 
 
 func _meta_alcanzada() -> void:
+	fase = FASE_META
+	_terminar_corrida(true)
+
+
+func _terminar_corrida(exito: bool) -> void:
 	paso_timer.stop()
-	fase = "META"
+	fase = FASE_FIN
 	_emitir_telemetria()
+	_mostrar_resultado_final(exito)
+	if exito:
+		sonido_meta.play()
+	corrida_terminada.emit(exito, raton.pasos, tiempo, visitadas.size())
 	print("Meta alcanzada en ", raton.pasos, " pasos")
+
+
+func _mostrar_resultado_final(exito: bool) -> void:
+	resultado_label.text = "META ALCANZADA" if exito else "CORRIDA TERMINADA"
+	detalle_resultado_label.text = "pasos: %d\ntiempo: %.1f s\nvisitadas: %d" % [
+		raton.pasos,
+		tiempo,
+		visitadas.size(),
+	]
+	panel_final.show()
+
+
+func _on_raton_paso_terminado() -> void:
+	if fase != FASE_FIN:
+		sonido_paso.play()
+
+
+func _on_raton_choque() -> void:
+	sonido_choque.play()
 
 
 func _on_boton_pausa_pressed() -> void:
