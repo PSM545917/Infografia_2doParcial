@@ -1,4 +1,5 @@
-# Simulador Micromouse - Segundo Parcial (Infografía, I/2026)
+# Simulador Micromouse - Segundo Parcial (Infografía, I/2026) - 
+# Pablo Gerhard Schmidt - 79091
 
 Este proyecto consiste en la implementación del cerebro algorítmico y los sistemas visuales de un robot **Micromouse** desarrollado sobre **Godot 4.6**. El ratón es capaz de explorar de forma autónoma laberintos con ciclos, mapear paredes sensadas en su propia memoria, retornar al inicio al completar la exploración y ejecutar una corrida rápida (Speed Run) por la ruta óptima sin chocar.
 
