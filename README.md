@@ -60,3 +60,12 @@ Se ha añadido un sistema visual de **Heat-map térmico** en las celdas visitada
 2. **Algoritmo de Inundación (Flood-Fill)**: [Flood Fill Algorithm for Micromouse (Aditya Sharma)](https://medium.com/@adityashrm21/flood-fill-algorithm-for-micromouse-fb2c42289fdf) - Guía sobre la propagación de distancias en matrices micromouse.
 3. **Búsqueda en Anchura (BFS)**: [BFS for Shortest Paths (GeeksforGeeks)](https://www.geeksforgeeks.org/breadth-first-search-or-bfs-for-a-graph/) - Lógica de BFS en grids para encontrar el camino más corto.
 4. **Documentación de Godot Engine**: [Godot Docs](https://docs.godotengine.org/) - API para ConfigFile, OptionButton, DirAccess y dibujo en 2D CanvasItem (`draw_polyline`, `draw_rect`).
+
+---
+
+## 🧪 Validación Final
+
+Se ha verificado el correcto funcionamiento del simulador en Godot 4.6 con los tres laberintos provistos por defecto, obteniendo un comportamiento robusto en todas las fases:
+1. **01_entrenamiento.maz** (8x8): El ratón realiza la exploración Flood-Fill de manera limpia, registra la meta al llegar, vuelve al inicio recopilando las paredes restantes y ejecuta el Speed Run de manera óptima en pocos pasos.
+2. **02_clasico.maz** (16x16): El ratón explora y mapea las paredes descubiertas resolviendo ciclos sin entrar en bucles infinitos. Regresa al inicio por el camino más rápido y ejecuta el Speed Run por la ruta ideal en la mitad de pasos que la exploración original.
+3. **03_clasico.maz** (16x16): Prueba exitosa bajo condiciones de competencia real, confirmando el comportamiento robusto del algoritmo Flood-Fill restrictivo de celdas visitadas.
