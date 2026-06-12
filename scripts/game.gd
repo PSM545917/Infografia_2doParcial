@@ -74,8 +74,14 @@ func _iniciar_corrida() -> void:
 	if usar_cerebro_estudiante:
 		cerebro = CerebroEstudiante.new()
 		cerebro.preparar(laberinto.ancho, laberinto.alto, laberinto.metas, laberinto.inicio)
+		vista_mapa_raton.configurar(cerebro.mapa_del_raton(), ORIGEN, tam_celda)
+		vista_mapa_raton.mostrar_visitadas = true
+		vista_mapa_raton.mostrar_rutas = true
+		vista_mapa_raton.mostrar_heatmap = true
+		_actualizar_vista_raton()
 	else:
 		cerebro = CerebroWallFollower.new()
+		vista_mapa_raton.configurar(null, ORIGEN, tam_celda)
 	paso_timer.start()
 
 
@@ -91,6 +97,7 @@ func _ejecutar_paso() -> void:
 	cerebro.paso(raton)
 	visitadas[raton.celda] = true
 	_emitir_telemetria()
+	_actualizar_vista_raton()
 	if laberinto.es_meta(raton.celda):
 		_meta_alcanzada()
 
@@ -100,6 +107,23 @@ func _emitir_telemetria() -> void:
 	pasos_cambiados.emit(raton.pasos)
 	visitadas_cambiadas.emit(visitadas.size())
 	tiempo_cambiado.emit(tiempo)
+
+
+func _actualizar_vista_raton() -> void:
+	if usar_cerebro_estudiante and cerebro != null:
+		vista_mapa_raton.conteo_visitas = cerebro.conteo_visitas
+		vista_mapa_raton.ruta_exploracion = cerebro.ruta_exploracion
+		if cerebro.has_method("ruta_speed_run"):
+			var ruta_sr = cerebro.ruta_speed_run()
+			if ruta_sr is Array:
+				# Convert to Typed Array if necessary
+				var typed_ruta: Array[Vector2i] = []
+				for c in ruta_sr:
+					typed_ruta.append(Vector2i(c))
+				vista_mapa_raton.ruta_speed_run = typed_ruta
+		else:
+			vista_mapa_raton.ruta_speed_run = []
+		vista_mapa_raton.queue_redraw()
 
 
 func _meta_alcanzada() -> void:
