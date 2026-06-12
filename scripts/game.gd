@@ -1,102 +1,118 @@
 extends Node2D
 
-# Controlador principal: carga el laberinto, coloca al ratón y hace avanzar
-# el cerebro un paso por tick del paso_timer. El núcleo (laberinto, sensado,
-# movimiento, vista de dios) ya está resuelto; los huecos del parcial están
-# marcados con "TODO (PARCIAL · ...)".
-
-# Laberintos incluidos: 01_entrenamiento (8x8, perfecto: el wall-follower lo
-# resuelve), 02_clasico y 03_clasico (16x16 con ciclos y meta central, estilo
-# competencia: el wall-follower NO basta).
 @export_file("*.maz") var archivo_laberinto: String = "res://mazes/01_entrenamiento.maz"
-# Marca esta casilla (en el Inspector del nodo Game) para usar tu cerebro.
 @export var usar_cerebro_estudiante: bool = false
 
 const ORIGEN := Vector2(28, 44)
-# La vista de dios dispone de ~608 px; la celda se adapta al tamaño del
-# laberinto (38 px en los 16x16, más grande en los de entrenamiento).
-var tam_celda := 38.0
 
+var tam_celda := 38.0
 var laberinto: Laberinto
 var cerebro = null
+var fase := "EXPLORANDO"
+var tiempo := 0.0
+var visitadas := {}
+var pausado := false
+var velocidades := [1.0, 2.0, 4.0]
+var indice_velocidad := 0
+var wait_time_base := 0.12
+var duracion_paso_base := 0.10
+
+signal pasos_cambiados(pasos: int)
+signal visitadas_cambiadas(cantidad: int)
+signal tiempo_cambiado(segundos: float)
+signal fase_cambiada(nombre: String)
 
 @onready var vista_dios: VistaLaberinto = $vista_dios
 @onready var vista_mapa_raton: VistaLaberinto = $vista_mapa_raton
 @onready var raton: Raton = $raton
 @onready var paso_timer: Timer = $paso_timer
-
-# === ESTADO DE LA CORRIDA (B3) ===
-# Contrato sugerido para comunicarte con el HUD (hud.gd) sin acoplarlos:
-#   signal pasos_cambiados(pasos: int)
-#   signal visitadas_cambiadas(cantidad: int)
-#   signal fase_cambiada(nombre: String)
-#   signal corrida_terminada(exito: bool, pasos: int)
-# TODO (PARCIAL · B1/B3): declara el estado de la corrida (fase, cronómetro,
-# celdas visitadas) y sus señales.
+@onready var boton_pausa: Button = $ui/hud/margen/columna/botones/boton_pausa
+@onready var boton_velocidad: Button = $ui/hud/margen/columna/botones/boton_velocidad
 
 
 func _ready() -> void:
+	wait_time_base = paso_timer.wait_time
+	duracion_paso_base = raton.duracion_paso
+	_iniciar_corrida()
+	_emitir_telemetria()
+
+
+func _process(delta: float) -> void:
+	if not pausado and not paso_timer.is_stopped():
+		tiempo += delta
+		tiempo_cambiado.emit(tiempo)
+
+
+func _iniciar_corrida() -> void:
 	laberinto = Laberinto.desde_archivo(archivo_laberinto)
 	tam_celda = minf(56.0, 608.0 / maxf(laberinto.ancho, laberinto.alto))
 	vista_dios.configurar(laberinto, ORIGEN, tam_celda)
 	raton.configurar(laberinto, ORIGEN, tam_celda)
+	fase = "EXPLORANDO"
+	tiempo = 0.0
+	visitadas = {}
+	visitadas[raton.celda] = true
+	pausado = false
+	paso_timer.paused = false
+	paso_timer.wait_time = wait_time_base / velocidades[indice_velocidad]
+	raton.duracion_paso = duracion_paso_base / velocidades[indice_velocidad]
+	boton_pausa.text = "Pausa"
+	boton_velocidad.text = "Vel x%d" % int(velocidades[indice_velocidad])
 	if usar_cerebro_estudiante:
 		cerebro = CerebroEstudiante.new()
-		cerebro.preparar(laberinto.ancho, laberinto.alto, laberinto.metas,
-				laberinto.inicio)
+		cerebro.preparar(laberinto.ancho, laberinto.alto, laberinto.metas, laberinto.inicio)
 	else:
 		cerebro = CerebroWallFollower.new()
-	# La vista derecha ("mapa del ratón") queda vacía hasta que la conectes:
-	# TODO (PARCIAL · M2): configura vista_mapa_raton con el laberinto que TU
-	# cerebro descubre (Laberinto.vacio + poner_pared al sensar) y redibuja
-	# cada vez que aprenda una pared. Distingue visitadas / no visitadas.
+	paso_timer.start()
 
 
 func _on_paso_timer_timeout() -> void:
+	_ejecutar_paso()
+
+
+func _ejecutar_paso() -> void:
 	if raton.ocupado():
 		return
 	cerebro.paso(raton)
-	# TODO (PARCIAL · B1): actualiza pasos / visitadas / cronómetro en el HUD.
+	visitadas[raton.celda] = true
+	_emitir_telemetria()
 	if laberinto.es_meta(raton.celda):
 		_meta_alcanzada()
 
 
+func _emitir_telemetria() -> void:
+	fase_cambiada.emit(fase)
+	pasos_cambiados.emit(raton.pasos)
+	visitadas_cambiadas.emit(visitadas.size())
+	tiempo_cambiado.emit(tiempo)
+
+
 func _meta_alcanzada() -> void:
 	paso_timer.stop()
-	print("¡Meta alcanzada en ", raton.pasos, " pasos!")
-	# TODO (PARCIAL · B3): esto debe ser una máquina de estados explícita
-	# (EXPLORANDO → META → VOLVIENDO → SPEED_RUN → FIN), con pantalla final
-	# (pasos de exploración vs. pasos del speed run) y opción de reiniciar.
-	# TODO (PARCIAL · B4): sonido de meta (assets/sounds/meta.wav). Conecta
-	# también raton.choque a un sonido de choque y cada avance a un tic.
-	# TODO (PARCIAL · M3): aquí continúa el ciclo: volver al inicio y ejecutar
-	# el speed run sobre el mapa descubierto, dibujando ambas rutas.
-	# TODO (PARCIAL · M4): guarda el récord (mejores pasos) de ESTE laberinto
-	# en user:// y muéstralo; añade un selector para cambiar de laberinto sin
-	# tocar código.
+	fase = "META"
+	_emitir_telemetria()
+	print("Meta alcanzada en ", raton.pasos, " pasos")
 
-
-# --- Botones del panel (ya conectados en el editor; cuerpos por hacer) ---
 
 func _on_boton_pausa_pressed() -> void:
-	# TODO (PARCIAL · B2): pausa/reanuda la corrida (paso_timer) y refleja el
-	# estado en el texto del botón.
-	pass
+	pausado = not pausado
+	paso_timer.paused = pausado
+	boton_pausa.text = "Reanudar" if pausado else "Pausa"
 
 
 func _on_boton_paso_pressed() -> void:
-	# TODO (PARCIAL · B2): con la corrida pausada, ejecuta UN solo paso del
-	# cerebro (depuración paso a paso).
-	pass
+	if pausado:
+		_ejecutar_paso()
 
 
 func _on_boton_velocidad_pressed() -> void:
-	# TODO (PARCIAL · B2): cicla la velocidad (p. ej. x1 → x2 → x4 cambiando
-	# paso_timer.wait_time y raton.duracion_paso).
-	pass
+	indice_velocidad = (indice_velocidad + 1) % velocidades.size()
+	var velocidad: float = velocidades[indice_velocidad]
+	paso_timer.wait_time = wait_time_base / velocidad
+	raton.duracion_paso = duracion_paso_base / velocidad
+	boton_velocidad.text = "Vel x%d" % int(velocidad)
 
 
 func _on_boton_reiniciar_pressed() -> void:
-	# TODO (PARCIAL · B2): reinicia la corrida completa: ratón al inicio,
-	# cerebro nuevo, contadores a cero, timer corriendo.
-	pass
+	_iniciar_corrida()
+	_emitir_telemetria()
